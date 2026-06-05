@@ -1,0 +1,35 @@
+# Commit History — push one per day over 7 days
+
+Day 1:
+  git add ledger-service/pom.xml
+  git add ledger-service/src/main/java/com/babacar/ledger/domain/
+  git commit -m "initial project structure and domain model (Account, Transfer, LedgerEntry)"
+
+Day 2:
+  git add ledger-service/src/main/resources/db/
+  git commit -m "add Flyway schema migration with indexes for accounts, transfers, entries"
+
+Day 3:
+  git add ledger-service/src/main/java/com/babacar/ledger/service/
+  git commit -m "implement double-entry LedgerService with optimistic locking"
+
+Day 4:
+  git add ledger-service/src/main/java/com/babacar/ledger/api/
+  git commit -m "add REST API with transfer, reversal, and audit trail endpoints"
+
+Day 5:
+  git add ledger-service/src/main/java/com/babacar/ledger/kafka/
+  git commit -m "publish ledger events to Kafka on transfer and reversal"
+
+Day 6:
+  git add ledger-service/src/main/java/com/babacar/ledger/observability/
+  git add ledger-service/src/main/resources/application.yml
+  git commit -m "add Micrometer metrics and Prometheus observability"
+
+Day 7:
+  git add ledger-service/src/test/
+  git add docker-compose.yml
+  git add ledger-service/Dockerfile
+  git add k8s/
+  git add .github/
+  git commit -m "add Testcontainers integration tests, Docker, K8s manifests, GitHub Actions CI"
