@@ -53,8 +53,7 @@ class LedgerIntegrationTest {
         AccountResponse receiver = createAccount("owner_B", "XOF", AccountType.CUSTOMER);
 
         // Fund sender via system transfer
-        AccountResponse system = createAccount("system", "XOF", AccountType.SYSTEM);
-        executeTransfer(system.getId().toString(), sender.getId().toString(), "500000", "XOF");
+        fundAccount(sender.getId().toString(), "500000");
 
         // Transfer 50000 XOF from sender to receiver
         MvcResult result = mockMvc.perform(post("/api/v1/transfers")
@@ -110,9 +109,7 @@ class LedgerIntegrationTest {
     void transfer_reversal_restoresBalances() throws Exception {
         AccountResponse sender = createAccount("owner_E", "XOF", AccountType.CUSTOMER);
         AccountResponse receiver = createAccount("owner_F", "XOF", AccountType.CUSTOMER);
-        AccountResponse system = createAccount("sys2", "XOF", AccountType.SYSTEM);
-
-        executeTransfer(system.getId().toString(), sender.getId().toString(), "100000", "XOF");
+        fundAccount(sender.getId().toString(), "100000");
 
         MvcResult transferResult = mockMvc.perform(post("/api/v1/transfers")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -157,12 +154,14 @@ class LedgerIntegrationTest {
         return objectMapper.readValue(result.getResponse().getContentAsString(), AccountResponse.class);
     }
 
-    private void executeTransfer(String from, String to, String amount, String currency) throws Exception {
-        mockMvc.perform(post("/api/v1/transfers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(String.format(
-                                "{\"debitAccountId\":\"%s\",\"creditAccountId\":\"%s\",\"amount\":%s,\"currency\":\"%s\"}",
-                                from, to, amount, currency)))
-                .andExpect(status().isCreated());
-    }
+    private void fundAccount(String accountId, String amount) throws Exception {
+        mockMvc.perform(post("/api/v1/accounts/" + accountId + "/fund")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(String.format(
+                    "{\"amount\":%s,\"reference\":\"TEST-FUNDING\"}",
+                    amount)))
+            .andExpect(status().isCreated());
+        }
+
+
 }
