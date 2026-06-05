@@ -21,9 +21,8 @@ jobs:
           cache: maven
 
       - name: Build and test
-        run: |
-          cd ledger-service
-          ./mvnw verify -B
+        working-directory: ledger-service
+        run: mvn verify -B
 
       - name: Build Docker image
         run: docker build -t transaction-ledger-service:${{ github.sha }} ./ledger-service

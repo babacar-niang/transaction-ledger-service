@@ -16,9 +16,9 @@ A production-grade double-entry financial ledger built with Java 17, Spring Boot
 
 ## What is a Ledger?
 
-A ledger is the financial source of truth. Every debit and credit is recorded as an immutable entry. The current balance of any account is derived by summing its entries — never stored directly.
+A ledger is the financial source of truth. Every debit and credit is recorded as an immutable entry. The current balance of any account is derived by summing its entries never stored directly.
 
-This is double-entry bookkeeping: **every debit has a matching credit**. Money doesn't appear or disappear — it moves between accounts.
+This is double-entry bookkeeping: **every debit has a matching credit**. Money doesn't appear or disappear it moves between accounts.
 
 ---
 
@@ -47,6 +47,7 @@ flowchart LR
 ### Prometheus Metrics
 
 ![Prometheus](docs/prometheus-metrics.png)
+
 ---
 
 ## Key Design Decisions
@@ -55,19 +56,19 @@ flowchart LR
 Every financial operation produces two entries: a debit on one account and a credit on another. This makes the ledger self-balancing and makes errors immediately detectable. The sum of all debits always equals the sum of all credits.
 
 ### Why Immutable Entries?
-Ledger entries are never updated or deleted. If a payment is reversed, a new reversal entry is created. This gives a complete, tamper-proof audit trail — critical for compliance and reconciliation.
+Ledger entries are never updated or deleted. If a payment is reversed, a new reversal entry is created. This gives a complete, tamper-proof audit trail critical for compliance and reconciliation.
 
 ### Why Derived Balances?
 Account balances are computed from the sum of entries, not stored as a mutable field. This prevents balance drift and makes the ledger the single source of truth. A balance snapshot is cached for performance.
 
 ### Why Optimistic Locking?
-Concurrent transfers to the same account must not corrupt balances. Optimistic locking detects conflicts at commit time and retries — no blocking, better throughput than pessimistic locks.
+Concurrent transfers to the same account must not corrupt balances. Optimistic locking detects conflicts at commit time and retries no blocking, better throughput than pessimistic locks.
 
 ### Why Kafka?
 Ledger events (debit, credit, reversal) are published to Kafka so downstream services (audit, reporting, notifications) can react without coupling to the ledger.
 
 ### Why PostgreSQL?
-ACID transactions are non-negotiable for financial data. The debit and credit entries of a transfer are written atomically — either both succeed or neither does.
+ACID transactions are non-negotiable for financial data. The debit and credit entries of a transfer are written atomically either both succeed or neither does.
 
 ---
 
@@ -116,7 +117,7 @@ docker-compose up --build
 
 ## Demo Scenario
 
-Full lifecycle in 7 steps — run against `docker-compose up`:
+Full lifecycle in 7 steps run against `docker-compose up`:
 
 ```bash
 # 1. Create customer account
@@ -157,6 +158,7 @@ curl -X POST http://localhost:8082/api/v1/transfers/{transferId}/reverse \
 ## API Reference
 
 ### Create Account
+
 ```
 POST /api/v1/accounts
 {
@@ -167,6 +169,7 @@ POST /api/v1/accounts
 ```
 
 ### Fund Account (from system treasury)
+
 ```
 POST /api/v1/accounts/{accountId}/fund
 {
@@ -174,15 +177,18 @@ POST /api/v1/accounts/{accountId}/fund
   "reference": "INITIAL_FUNDING"
 }
 ```
+
 Credits the account via a real double-entry transfer from `SYSTEM_TREASURY`.
 The treasury account is created automatically on first use.
 
 ### Get Balance
+
 ```
 GET /api/v1/accounts/{accountId}/balance
 ```
 
 ### Transfer (Debit + Credit atomically)
+
 ```
 POST /api/v1/transfers
 {
@@ -196,6 +202,7 @@ POST /api/v1/transfers
 ```
 
 ### Account History (Audit Trail)
+
 ```
 GET /api/v1/accounts/{accountId}/entries
 GET /api/v1/accounts/{accountId}/entries?type=DEBIT
@@ -203,6 +210,7 @@ GET /api/v1/accounts/{accountId}/entries?from=2024-01-01&to=2024-12-31
 ```
 
 ### Reverse a Transfer
+
 ```
 POST /api/v1/transfers/{transferId}/reverse
 {
@@ -226,7 +234,7 @@ A transfer of 50,000 XOF from Account A to Account B produces:
 │  Account B   │  CREDIT    │  50,000 XOF  │  150,000 XOF     │
 └──────────────┴────────────┴──────────────┴──────────────────┘
 
-Ledger balance check: Total debits = Total credits ✓
+Ledger balance check: Total debits = Total credits 
 ```
 
 ---
@@ -321,16 +329,6 @@ transaction-ledger-service/
 ```
 
 ---
-## Screenshots
-
-### Swagger UI
-
-![Swagger UI](docs/swagger-ui.png)
-
-### Prometheus Metrics
-
-![Prometheus](docs/prometheus-metrics.png)
----
 
 ## Related Project
 
@@ -344,7 +342,6 @@ Payment Engine → Kafka → Ledger Service
 
 The ledger will become the financial source of truth for all processed payments.
 
----
 
 ---
 ## Future Improvements
@@ -361,6 +358,6 @@ The ledger will become the financial source of truth for all processed payments.
 
 ## Author
 
-**Babacar Niang** — Senior Backend Engineer · Financial Infrastructure · Distributed Systems
+**Babacar Niang** Senior Backend Engineer · Financial Infrastructure · Distributed Systems
 
 [LinkedIn](https://linkedin.com/in/babacar-niang-swe) · [GitHub](https://github.com/babacar-niang)
