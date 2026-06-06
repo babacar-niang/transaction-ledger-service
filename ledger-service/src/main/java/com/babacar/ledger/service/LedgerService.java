@@ -26,6 +26,7 @@ public class LedgerService {
     private final TransferRepository transferRepository;
     private final LedgerEventProducer eventProducer;
     private final LedgerMetrics metrics;
+    private final TransferExecutor transferExecutor;
 
     @Transactional
     public AccountResponse createAccount(CreateAccountRequest request) {
@@ -41,22 +42,23 @@ public class LedgerService {
         return toAccountResponse(account);
     }
 
+    @Transactional(readOnly = true)
     public AccountResponse getAccount(UUID accountId) {
         return toAccountResponse(findAccount(accountId));
     }
 
     /**
-     * Executes a double-entry transfer with manual retry on optimistic lock conflicts.
-     * Each retry uses REQUIRES_NEW to get a fresh transaction with updated version numbers.
+     * Retry loop — calls TransferExecutor.execute() which runs in REQUIRES_NEW.
+     * Spring AOP proxy is active because the call crosses bean boundaries.
      * Backoff: 10ms → 20ms → 40ms → 80ms → 160ms
      */
     public TransferResponse transfer(TransferRequest request) {
-        int maxAttempts = 5;
-        long backoffMs  = 10;
+        int  maxAttempts = 5;
+        long backoffMs   = 10;
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                return executeTransfer(request);
+                return transferExecutor.execute(request);
             } catch (ObjectOptimisticLockingFailureException e) {
                 if (attempt == maxAttempts) {
                     log.error("Transfer failed after {} attempts — concurrent conflict", maxAttempts);
@@ -75,46 +77,6 @@ public class LedgerService {
             }
         }
         throw new IllegalStateException("Transfer failed unexpectedly");
-    }
-
-    /**
-     * Core transfer logic in its own transaction (REQUIRES_NEW).
-     * Each retry gets fresh account versions from DB — no stale state.
-     */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public TransferResponse executeTransfer(TransferRequest request) {
-        Account debitAccount  = findAccountWithLock(request.getDebitAccountId());
-        Account creditAccount = findAccountWithLock(request.getCreditAccountId());
-
-        validateTransfer(debitAccount, creditAccount, request);
-
-        debitAccount.setBalance(debitAccount.getBalance().subtract(request.getAmount()));
-        creditAccount.setBalance(creditAccount.getBalance().add(request.getAmount()));
-
-        accountRepository.save(debitAccount);
-        accountRepository.save(creditAccount);
-
-        Transfer transfer = Transfer.builder()
-                .debitAccountId(debitAccount.getId())
-                .creditAccountId(creditAccount.getId())
-                .amount(request.getAmount())
-                .currency(request.getCurrency())
-                .reference(request.getReference())
-                .description(request.getDescription())
-                .status(TransferStatus.COMPLETED)
-                .build();
-        transfer = transferRepository.save(transfer);
-
-        createEntry(debitAccount, transfer, EntryType.DEBIT);
-        createEntry(creditAccount, transfer, EntryType.CREDIT);
-
-        metrics.incrementTransfers();
-        log.info("Transfer completed: {} | {} {} from {} to {}",
-                transfer.getId(), request.getAmount(), request.getCurrency(),
-                debitAccount.getId(), creditAccount.getId());
-
-        eventProducer.publishTransferCompleted(transfer);
-        return toTransferResponse(transfer);
     }
 
     /**
@@ -143,7 +105,7 @@ public class LedgerService {
                 .creditAccountId(creditAccount.getId())
                 .amount(original.getAmount())
                 .currency(original.getCurrency())
-                .reference("REV-" + original.getReference())
+                .reference("REV-" + (original.getReference() != null ? original.getReference() : ""))
                 .description("Reversal: " + reason)
                 .status(TransferStatus.COMPLETED)
                 .reversedTransferId(original.getId())
@@ -164,6 +126,7 @@ public class LedgerService {
         return toTransferResponse(reversal);
     }
 
+    @Transactional(readOnly = true)
     public List<LedgerEntryResponse> getAccountEntries(
             UUID accountId, String type, Instant from, Instant to) {
         List<LedgerEntry> entries;
@@ -228,18 +191,6 @@ public class LedgerService {
                 .description(transfer.getDescription())
                 .build();
         entryRepository.save(entry);
-    }
-
-    private void validateTransfer(Account debit, Account credit, TransferRequest req) {
-        if (debit.getStatus() != AccountStatus.ACTIVE)
-            throw new IllegalStateException("Debit account is not active: " + debit.getId());
-        if (credit.getStatus() != AccountStatus.ACTIVE)
-            throw new IllegalStateException("Credit account is not active: " + credit.getId());
-        if (!debit.getCurrency().equals(req.getCurrency()))
-            throw new IllegalArgumentException("Currency mismatch on debit account");
-        if (!debit.hasSufficientBalance(req.getAmount()))
-            throw new InsufficientBalanceException(
-                    debit.getId(), req.getAmount(), debit.getBalance());
     }
 
     private Account findAccount(UUID id) {
