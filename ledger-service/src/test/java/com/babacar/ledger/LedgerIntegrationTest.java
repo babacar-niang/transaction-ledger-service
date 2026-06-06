@@ -17,6 +17,10 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import java.math.BigDecimal;
 
@@ -136,6 +140,91 @@ class LedgerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.balance").value(100000));
     }
+    @Test
+void concurrentTransfers_optimisticLocking_balanceConsistent() throws Exception {
+    // Setup
+    AccountResponse sender   = createAccount("concurrent_sender", "XOF", AccountType.CUSTOMER);
+    AccountResponse receiver = createAccount("concurrent_receiver", "XOF", AccountType.CUSTOMER);
+    fundAccount(sender.getId().toString(), "500000");
+
+    int threads       = 10;
+    int amountEach    = 10_000;
+    int expectedFinal = 500_000 - (threads * amountEach); // 400,000
+
+    ExecutorService executor = Executors.newFixedThreadPool(threads);
+    CountDownLatch   ready   = new CountDownLatch(threads);
+    CountDownLatch   start   = new CountDownLatch(1);
+    CountDownLatch   done    = new CountDownLatch(threads);
+
+    AtomicInteger successCount = new AtomicInteger(0);
+    AtomicInteger failCount    = new AtomicInteger(0);
+
+    for (int i = 0; i < threads; i++) {
+        final int idx = i;
+        executor.submit(() -> {
+            try {
+                ready.countDown();
+                start.await();
+
+                String body = String.format(
+                    "{\"debitAccountId\":\"%s\",\"creditAccountId\":\"%s\"," +
+                    "\"amount\":%d,\"currency\":\"XOF\",\"reference\":\"CONCURRENT-%d\"}",
+                    sender.getId(), receiver.getId(), amountEach, idx
+                );
+
+                mockMvc.perform(post("/api/v1/transfers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                       .andDo(result -> {
+                           if (result.getResponse().getStatus() == 201)
+                               successCount.incrementAndGet();
+                           else
+                               failCount.incrementAndGet();
+                       });
+
+            } catch (Exception e) {
+                failCount.incrementAndGet();
+            } finally {
+                done.countDown();
+            }
+        });
+    }
+
+    ready.await();
+    start.countDown();
+    done.await();
+    executor.shutdown();
+
+    // Tous les transferts doivent réussir
+    assertThat(successCount.get())
+        .as("All concurrent transfers should succeed")
+        .isEqualTo(threads);
+
+    assertThat(failCount.get())
+        .as("No transfer should fail")
+        .isEqualTo(0);
+
+    // Balance finale exacte — pas de double-spend
+    String balanceJson = mockMvc.perform(
+            get("/api/v1/accounts/" + sender.getId() + "/balance"))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+
+    assertThat(balanceJson)
+        .as("Balance must be exactly " + expectedFinal + " XOF")
+        .contains(String.valueOf(expectedFinal));
+
+    // Audit trail — exactement 10 entrées DEBIT, pas de doublons
+    String entries = mockMvc.perform(
+            get("/api/v1/accounts/" + sender.getId() + "/entries?type=DEBIT"))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+
+    long debitCount = entries.chars().filter(c -> c == '{').count();
+    assertThat(debitCount)
+        .as("Audit trail must contain exactly 10 debit entries")
+        .isEqualTo(threads);
+}
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 

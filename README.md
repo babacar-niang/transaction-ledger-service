@@ -344,6 +344,25 @@ The ledger will become the financial source of truth for all processed payments.
 
 
 ---
+## Concurrency & Safety
+
+The ledger is safe under concurrent access.
+The following test fires 10 simultaneous transfers against the same account:
+
+```
+10 threads × 10,000 XOF = 100,000 XOF total debited
+Starting balance:  500,000 XOF
+Expected balance:  400,000 XOF
+```
+
+Optimistic locking (`@Version` on `Account`) detects conflicts at commit time
+and retries — no blocking, no corruption, no double-spend.
+
+Run it:
+```bash
+./mvnw test -Dtest=LedgerIntegrationTest#concurrentTransfers_optimisticLocking_balanceConsistent
+```
+---
 ## Future Improvements
 
 - Consume PaymentCreated events from Fintech Payment Engine
