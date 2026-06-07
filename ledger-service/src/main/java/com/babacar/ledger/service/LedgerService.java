@@ -141,41 +141,40 @@ public class LedgerService {
         return entries.stream().map(this::toEntryResponse).collect(Collectors.toList());
     }
 
-    @Transactional
-    public UUID getOrCreateTreasuryAccount() {
-        return accountRepository.findByOwnerId("SYSTEM_TREASURY")
-                .stream().findFirst()
-                .map(Account::getId)
-                .orElseGet(() -> {
-                    Account treasury = Account.builder()
-                            .ownerId("SYSTEM_TREASURY")
-                            .currency("XOF")
-                            .type(AccountType.SYSTEM)
-                            .balance(new java.math.BigDecimal("999999999"))
-                            .status(AccountStatus.ACTIVE)
-                            .build();
-                    Account saved = accountRepository.save(treasury);
-                    log.info("Treasury account created: {}", saved.getId());
-                    return saved.getId();
-                });
-    }
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+public UUID getOrCreateTreasuryAccount() {
+    return accountRepository.findByOwnerId("SYSTEM_TREASURY")
+            .stream().findFirst()
+            .map(Account::getId)
+            .orElseGet(() -> {
+                Account treasury = Account.builder()
+                        .ownerId("SYSTEM_TREASURY")
+                        .currency("XOF")
+                        .type(AccountType.SYSTEM)
+                        .balance(new java.math.BigDecimal("999999999"))
+                        .status(AccountStatus.ACTIVE)
+                        .build();
+                Account saved = accountRepository.save(treasury);
+                log.info("Treasury account created: {}", saved.getId());
+                return saved.getId();
+            });
+}
 
-    @Transactional
-    public TransferResponse fundAccount(UUID accountId, FundAccountRequest request) {
-        UUID treasuryId = getOrCreateTreasuryAccount();
+public TransferResponse fundAccount(UUID accountId, FundAccountRequest request) {
+    UUID treasuryId = getOrCreateTreasuryAccount(); // REQUIRES_NEW — committé avant transfer()
 
-        TransferRequest transferRequest = new TransferRequest();
-        transferRequest.setDebitAccountId(treasuryId);
-        transferRequest.setCreditAccountId(accountId);
-        transferRequest.setAmount(request.amount());
-        transferRequest.setCurrency("XOF");
-        transferRequest.setReference(
-                request.reference() != null ? request.reference() : "FUNDING");
-        transferRequest.setDescription("Account funding from system treasury");
+    TransferRequest transferRequest = new TransferRequest();
+    transferRequest.setDebitAccountId(treasuryId);
+    transferRequest.setCreditAccountId(accountId);
+    transferRequest.setAmount(request.amount());
+    transferRequest.setCurrency("XOF");
+    transferRequest.setReference(
+            request.reference() != null ? request.reference() : "FUNDING");
+    transferRequest.setDescription("Account funding from system treasury");
 
-        log.info("Funding account {} with {} XOF", accountId, request.amount());
-        return transfer(transferRequest);
-    }
+    log.info("Funding account {} with {} XOF", accountId, request.amount());
+    return transfer(transferRequest);
+}
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
